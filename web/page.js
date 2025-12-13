@@ -1,5 +1,3 @@
-// FORCE CLEAR STATE for debugging
-localStorage.clear()
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 statedb.admin()
@@ -7,7 +5,7 @@ statedb.admin()
 function fallback_module() {
     return {
         _: {
-            'news': { $: '', 0: '' }
+            news: { $: '', 0: '' }
         }
     }
 }
@@ -42,9 +40,7 @@ async function init() {
     console.log('[page.js] init started')
     const { sdb } = await get()
 
-    // Watch for instances to get the valid sid
     const start = await sdb.watch(async (batch) => {
-        // Handle updates if needed
         console.log('[page.js] sdb watch batch:', batch)
     })
 
