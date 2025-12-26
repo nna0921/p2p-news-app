@@ -3193,7 +3193,7 @@ const wrapper = require('./wrapper')
 
 module.exports = news_app
 
-async function news_app (opts = {}) {
+async function news_app(opts = {}) {
   console.log('[news_app] called with opts:', opts)
   const { sid, vault } = opts
 
@@ -3213,7 +3213,7 @@ async function news_app (opts = {}) {
   return container
 }
 
-async function init (vault, sidebarEl, mainEl, sid) {
+async function init(vault, sidebarEl, mainEl, sid) {
   try {
     /*
             const api = blog_app(vault)
@@ -3265,8 +3265,8 @@ async function init (vault, sidebarEl, mainEl, sid) {
   }
 }
 
-function fallback_module () {
-  function fallback_instance () {
+function fallback_module() {
+  function fallback_instance() {
     return {
       _: {
         './wrapper': {
@@ -3305,7 +3305,6 @@ function fallback_module () {
     api: fallback_instance
   }
 }
-
 }).call(this)}).call(this,"/web/node_modules/news/index.js")
 },{"./wrapper":5,"STATE":1}],5:[function(require,module,exports){
 (function (__filename){(function (){
@@ -3319,7 +3318,7 @@ const graphdb = require('./graphdb')
 
 module.exports = my_component_with_graph
 
-async function my_component_with_graph (opts, protocol) {
+async function my_component_with_graph(opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
 
@@ -3346,7 +3345,7 @@ async function my_component_with_graph (opts, protocol) {
 
   return el
 
-  async function onbatch (batch) {
+  async function onbatch(batch) {
     for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file ? file.raw : null)))
       const valid_data = data.filter(d => d !== null)
@@ -3356,11 +3355,11 @@ async function my_component_with_graph (opts, protocol) {
     }
   }
 
-  function inject (data) {
+  function inject(data) {
     sheet.replaceSync(data.join('\n'))
   }
 
-  function on_entries (data) {
+  function on_entries(data) {
     if (!data || !data[0]) {
       // console.error('Entries data is missing or empty.')
       db = graphdb({})
@@ -3385,7 +3384,7 @@ async function my_component_with_graph (opts, protocol) {
     notify_db_initialized(parsed_data)
   }
 
-  function notify_db_initialized (entries) {
+  function notify_db_initialized(entries) {
     if (send_to_graph_explorer) {
       const head = [by, 'graph_explorer', mid++]
       send_to_graph_explorer({
@@ -3396,18 +3395,18 @@ async function my_component_with_graph (opts, protocol) {
     }
   }
 
-  function graph_explorer_protocol (send) {
+  function graph_explorer_protocol(send) {
     send_to_graph_explorer = send
     return on_graph_explorer_message
 
-    function on_graph_explorer_message (msg) {
+    function on_graph_explorer_message(msg) {
       const { type } = msg
       if (type.startsWith('db_')) {
         handle_db_request(msg, send)
       }
     }
 
-    function handle_db_request (request_msg, send) {
+    function handle_db_request(request_msg, send) {
       const { head: request_head, type: operation, data: params } = request_msg
       let result
 
@@ -3436,7 +3435,7 @@ async function my_component_with_graph (opts, protocol) {
 
       send_response(request_head, result)
 
-      function send_response (request_head, result) {
+      function send_response(request_head, result) {
         const response_head = [by, 'graph_explorer', mid++]
         send({
           head: response_head,
@@ -3449,7 +3448,7 @@ async function my_component_with_graph (opts, protocol) {
   }
 }
 
-function fallback_module () {
+function fallback_module() {
   return {
     _: {
       'graph-explorer': { $: '' },
@@ -3458,11 +3457,148 @@ function fallback_module () {
     api: fallback_instance
   }
 
-  function fallback_instance () {
+  function override_theme() {
+    return {
+      _: {},
+      drive: {
+        'style/': {
+          'style.css': {
+            raw: `
+            :host {
+              display: block;
+              height: 100%;
+              width: 100%;
+              background-color: #1a1b26; /* Deep midnight blue/gray */
+              color: #a9b1d6;           /* Soft blue-white text */
+              font-family: 'SF Mono', 'Segoe UI Mono', 'Roboto Mono', Menlo, Courier, monospace;
+              font-size: 13px;
+              line-height: 1.5;
+            }
+            .graph-container {
+              padding: 16px;
+              height: 100vh;
+              overflow: auto;
+              box-sizing: border-box;
+            }
+            /* Scrollbar styling */
+            .graph-container::-webkit-scrollbar {
+              width: 10px;
+              height: 10px;
+            }
+            .graph-container::-webkit-scrollbar-track {
+              background: #1a1b26;
+            }
+            .graph-container::-webkit-scrollbar-thumb {
+              background: #414868;
+              border-radius: 5px;
+              border: 2px solid #1a1b26;
+            }
+            .graph-container::-webkit-scrollbar-thumb:hover {
+              background: #565f89;
+            }
+
+            .node {
+              display: flex;
+              align-items: center;
+              white-space: nowrap;
+              cursor: default;
+              height: 28px;
+              padding: 0 8px;
+              border-radius: 4px;
+              transition: background-color 0.15s ease, color 0.15s ease;
+              user-select: none;
+            }
+            .clickable {
+              cursor: pointer;
+            }
+            .node:hover {
+              background-color: #2f334d;
+              color: #c0caf5;
+            }
+            
+            /* Icons */
+            .icon {
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              width: 18px;
+              height: 18px;
+              margin-right: 8px;
+              opacity: 0.9;
+            }
+            
+            .node.type-folder > .icon::before { 
+              content: '📁'; 
+              filter: grayscale(0.2); 
+              font-size: 14px;
+            }
+            .node.type-js-file > .icon::before { 
+              content: '📜'; 
+              font-size: 14px;
+            }
+            .node.type-file > .icon::before { 
+              content: '📄'; 
+              opacity: 0.7;
+              font-size: 14px;
+            }
+
+            /* Active/Selected state if applicable (future proofing) */
+            .node.selected {
+              background-color: #3d59a1;
+              color: #ffffff;
+            }
+          `
+          }
+        },
+        'runtime/': {
+          'node_height.json': { raw: '16' },
+          'vertical_scroll_value.json': { raw: '0' },
+          'horizontal_scroll_value.json': { raw: '0' },
+          'selected_instance_paths.json': { raw: '[]' },
+          'confirmed_selected.json': { raw: '[]' },
+          'instance_states.json': { raw: '{}' },
+          'search_entry_states.json': { raw: '{}' },
+          'last_clicked_node.json': { raw: 'null' },
+          'view_order_tracking.json': { raw: '{}' }
+        },
+        'mode/': {
+          'current_mode.json': { raw: '"menubar"' },
+          'previous_mode.json': { raw: '"menubar"' },
+          'search_query.json': { raw: '""' },
+          'multi_select_enabled.json': { raw: 'false' },
+          'select_between_enabled.json': { raw: 'false' }
+        },
+        'flags/': {
+          'hubs.json': { raw: '"default"' },
+          'selection.json': { raw: 'false' },
+          'recursive_collapse.json': { raw: 'true' }
+        },
+        'keybinds/': {
+          'navigation.json': {
+            raw: JSON.stringify({
+              ArrowUp: 'navigate_up_current_node',
+              ArrowDown: 'navigate_down_current_node',
+              'Control+ArrowDown': 'toggle_subs_for_current_node',
+              'Control+ArrowUp': 'toggle_hubs_for_current_node',
+              'Alt+s': 'multiselect_current_node',
+              'Alt+b': 'select_between_current_node',
+              'Control+m': 'toggle_search_mode',
+              'Alt+j': 'jump_to_next_duplicate'
+            })
+          }
+        },
+        'undo/': {
+          'stack.json': { raw: '[]' }
+        }
+      }
+    }
+  }
+
+  function fallback_instance() {
     return {
       _: {
         'graph-explorer': {
-          0: '',
+          0: override_theme,
           mapping: {
             style: 'theme',
             runtime: 'runtime',
@@ -3531,7 +3667,7 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 statedb.admin()
 
-function fallback_module () {
+function fallback_module() {
   return {
     _: {
       news: {
@@ -3586,7 +3722,7 @@ const customVault = {
   }
 }
 
-async function init () {
+async function init() {
   console.log('[page.js] init started')
 
   const start = await sdb.watch(async (batch) => {
