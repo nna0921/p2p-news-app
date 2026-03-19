@@ -3183,85 +3183,96 @@ function graphdb (entries) {
 
 },{}],4:[function(require,module,exports){
 (function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { get } = statedb(defaults)
-const wrapper = require('./wrapper')
+const STATE = require ('STATE')
+const statedb = STATE (__filename)
+const { get } = statedb (defaults)
+const wrapper = require ('./wrapper')
 
-module.exports = news_app
+module.exports = graph_explorer_impl
 
-async function news_app(opts = {}) {
-  const { sid, vault } = opts
+async function graph_explorer_impl (opts, protocol) {
+  const { sid } = opts
 
-  const container = document.createElement('div')
-  container.className = 'container'
+  const container = document.createElement ('div')
+  container.className = 'graph-explorer-container'
 
-  container.innerHTML = `
-    <div class="sidebar"></div>
-    <div class="main"></div>
-  `
-
-  const sidebar_el = container.querySelector('.sidebar')
-  const main_el = container.querySelector('.main')
-
-  await init({ vault, sidebar_el, main_el, sid, container })
-
-  return container
-}
-
-async function init({ vault, sidebar_el, main_el, sid, container }) {
-  const { id, sdb } = await get(sid)
+  const { id, sdb } = await get (sid)
 
   if (sdb && sdb.drive) {
-    const css_file = await sdb.drive.get('theme/shell.css').catch(() => null)
+    const css_file = await sdb.drive.get ('theme/shell.css').catch (() => null)
     if (css_file && css_file.raw) {
-      const style = document.createElement('style')
+      const style = document.createElement ('style')
       style.textContent = css_file.raw
-      container.appendChild(style)
+      container.appendChild (style)
     }
   }
 
-  const subs = await sdb.watch(handle_watch_batch)
+  let send_up = null
+  if (protocol) send_up = protocol (handle_parent_message)
 
-  async function handle_watch_batch(batch) {
+  const subs = await sdb.watch (handle_watch_batch)
+
+  async function handle_watch_batch (batch) {
   }
 
-  if (!subs || subs.length === 0) {
-    console.error('[news/index.js] No active instances found for wrapper')
-    return
-  }
+  if (!subs || subs.length === 0) return container
 
   const wrapper_instance = subs[0]
   const { sid: wrapper_sid } = wrapper_instance
 
-  const sidebar_component = await wrapper({
-    id: 'sidebar',
-    sid: wrapper_sid,
-    ids: { up: id }
-  }, setup_protocol)
+  let send_to_wrapper = null
 
-  function setup_protocol(send) {
-    return handle_message
+  const graph_el = await wrapper ({ sid: wrapper_sid }, setup_wrapper_protocol)
+  container.appendChild (graph_el)
+
+  return container
+
+  function handle_parent_message (msg) {
+    if (send_to_wrapper) send_to_wrapper (msg)
   }
 
-  function handle_message(msg) {
-    console.log('Host received:', msg)
+  function setup_wrapper_protocol (send) {
+    send_to_wrapper = send
+    return handle_wrapper_message
   }
 
-  sidebar_el.appendChild(sidebar_component)
+  function handle_wrapper_message (msg) {
+    if (send_up) send_up (msg)
+  }
 }
 
-function defaults(opts) {
-  const _ = {
-    './wrapper': { $: '' }
+function defaults (opts) {
+  const drive = {
+    'theme/': {},
+    'entries/': {},
+    'runtime/': {},
+    'mode/': {},
+    'flags/': {},
+    'keybinds/': {},
+    'undo/': {}
   }
 
-  return { _, api }
+  const _ = {
+    './wrapper': {
+      $: '',
+      mapping: {
+        theme: 'theme',
+        entries: 'entries',
+        runtime: 'runtime',
+        mode: 'mode',
+        flags: 'flags',
+        keybinds: 'keybinds',
+        undo: 'undo'
+      }
+    }
+  }
 
-  function api(opts) {
+  return { drive, _, api }
+
+  function api (opts) {
     const _ = {
       './wrapper': {
-        0: '',
+        0: override_theme,
         mapping: {
           theme: 'theme',
           entries: 'entries',
@@ -3269,91 +3280,574 @@ function defaults(opts) {
           mode: 'mode',
           flags: 'flags',
           keybinds: 'keybinds',
-          undo: 'undo',
-          'my-stories': 'my-stories',
-          feeds: 'feeds',
-          lists: 'lists',
-          discover: 'discover'
+          undo: 'undo'
         }
       }
     }
 
     const drive = {
       'entries/': {
-        'entries.json': {
-          $ref: 'entries.json'
-        }
+        'entries.json': { $ref: 'entries.json' }
       },
       'theme/': {
         'shell.css': {
           raw: `
-    body { margin: 0; padding: 0; overflow: hidden; }
-    .container {
-      display: flex;
-      width: 100vw;
-      height: 100vh;
-      overflow: hidden;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
-    .sidebar {
-      width: 250px;
-      min-width: 250px;
-      border-right: 1px solid #e5e7eb;
-      background: #f9fafb;
+    .graph-explorer-container {
       display: flex;
       flex-direction: column;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
     }
-    .main {
-      flex: 1;
-      overflow: auto;
-      padding: 2rem;
-      background: #ffffff;
-    }
-                `
-        }
+          `
+        },
+        'layout.css': { $ref: 'layout.css' },
+        'style.css': { $ref: 'style.css' }
       },
-      'runtime/': {},
-      'mode/': {},
-      'flags/': {},
-      'keybinds/': {},
-      'undo/': {},
-      'my-stories/': {},
-      'feeds/': {},
-      'lists/': {},
-      'discover/': {}
+      'runtime/': {
+        'node_height.json': { raw: '32' },
+        'vertical_scroll_value.json': { raw: '0' },
+        'horizontal_scroll_value.json': { raw: '0' },
+        'selected_instance_paths.json': { raw: '[]' },
+        'confirmed_selected.json': { raw: '[]' },
+        'instance_states.json': { raw: '{}' },
+        'search_entry_states.json': { raw: '{}' },
+        'last_clicked_node.json': { raw: 'null' },
+        'view_order_tracking.json': { raw: '{}' }
+      },
+      'mode/': { 'current_mode.json': { raw: '"menubar"' } },
+      'flags/': {
+        'hubs.json': { raw: '"default"' },
+        'selection.json': { raw: 'true' },
+        'recursive_collapse.json': { raw: 'true' }
+      },
+      'keybinds/': { 'navigation.json': { raw: '{}' } },
+      'undo/': { 'stack.json': { raw: '[]' } }
     }
 
     return { _, drive }
   }
+
+  function override_theme () {
+    return {
+      mapping: {
+        theme: 'theme',
+        entries: 'entries',
+        runtime: 'runtime',
+        mode: 'mode',
+        flags: 'flags',
+        keybinds: 'keybinds',
+        undo: 'undo'
+      },
+      drive: {
+        'theme/': {
+          'style.css': { $ref: 'style.css' }
+        },
+        'runtime/': {
+          'node_height.json': { raw: '32' },
+          'vertical_scroll_value.json': { raw: '0' },
+          'horizontal_scroll_value.json': { raw: '0' },
+          'selected_instance_paths.json': { raw: '[]' },
+          'confirmed_selected.json': { raw: '[]' },
+          'instance_states.json': {
+            raw: JSON.stringify ({
+              '|/': { expanded_subs: true },
+              '|/my-stories': { expanded_subs: true },
+              '|/feeds': { expanded_subs: true },
+              '|/feeds/hackers-digest': { expanded_subs: true },
+              '|/feeds/peer-review': { expanded_subs: true },
+              '|/feeds/peer-review/security-chronicles': { expanded_subs: true },
+              '|/lists': { expanded_subs: true },
+              '|/discover': { expanded_subs: true }
+            })
+          },
+          'search_entry_states.json': { raw: '{}' },
+          'last_clicked_node.json': { raw: 'null' },
+          'view_order_tracking.json': { raw: '{}' }
+        },
+        'mode/': {
+          'current_mode.json': { raw: '"menubar"' },
+          'previous_mode.json': { raw: '"menubar"' },
+          'search_query.json': { raw: '""' },
+          'multi_select_enabled.json': { raw: 'false' },
+          'select_between_enabled.json': { raw: 'false' }
+        },
+        'flags/': {
+          'hubs.json': { raw: '"default"' },
+          'selection.json': { raw: 'true' },
+          'recursive_collapse.json': { raw: 'true' }
+        },
+        'keybinds/': {
+          'navigation.json': {
+            raw: JSON.stringify ({
+              ArrowUp: 'navigate_up_current_node',
+              ArrowDown: 'navigate_down_current_node',
+              'Control+ArrowDown': 'toggle_subs_for_current_node',
+              'Control+ArrowUp': 'toggle_hubs_for_current_node',
+              'Alt+s': 'multiselect_current_node',
+              'Alt+b': 'select_between_current_node',
+              'Control+m': 'toggle_search_mode',
+              'Alt+j': 'jump_to_next_duplicate'
+            })
+          }
+        },
+        'undo/': { 'stack.json': { raw: '[]' } }
+      }
+    }
+  }
 }
 
-}).call(this)}).call(this,"/web/node_modules/news/index.js")
+}).call(this)}).call(this,"/web/node_modules/graph_explorer_impl/index.js")
 },{"./wrapper":5,"STATE":1}],5:[function(require,module,exports){
 (function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-
-const { get } = statedb(fallback_module)
-const graph_explorer = require('graph-explorer')
-const newsfeed_view = require('newsfeed_view')
-const content_parser = newsfeed_view.parser
-const news_cards = require('news_cards')
-const write_page = require('write_page')
-const news_list = require('newsfeed_card_list')
-const graphdb = require('./graphdb')
+const STATE = require ('STATE')
+const statedb = STATE (__filename)
+const { get } = statedb (fallback_module)
+const graph_explorer = require ('graph-explorer')
+const graphdb = require ('./graphdb')
 
 module.exports = wrapper
 
 async function wrapper (opts, protocol) {
-  const { id, sdb } = await get(opts.sid)
+  const { id, sdb } = await get (opts.sid)
   const { drive } = sdb
 
   const by = id
   let db = null
   let mid = 0
   let send_to_graph_explorer = null
-  let explorer_el = null
+  let send_up = null
 
+  const el = document.createElement ('div')
+  const shadow = el.attachShadow ({ mode: 'closed' })
+
+  const layout_sheet = new CSSStyleSheet ()
+  drive.get ('theme/layout.css').then (apply_layout_css).catch (handle_css_error)
+
+  const sheet = new CSSStyleSheet ()
+  shadow.adoptedStyleSheets = [layout_sheet, sheet]
+
+  if (protocol) send_up = protocol (handle_parent_message)
+
+  const subs = await sdb.watch (onbatch)
+
+  if (subs && subs.length > 0) {
+    if (typeof graph_explorer === 'function') {
+      const explorer_el = await graph_explorer (subs[0], graph_explorer_protocol)
+      shadow.appendChild (explorer_el)
+    }
+  }
+
+  return el
+
+  function handle_parent_message (msg) {
+    const { type } = msg
+    if (type === 'toggle_node' || type === 'select_node') {
+      if (send_to_graph_explorer) {
+        const head = [id, 'graph_explorer', mid++]
+        send_to_graph_explorer ({ head, type: msg.type, data: msg.data })
+      }
+    }
+  }
+
+  function apply_layout_css (file) {
+    if (file && file.raw) layout_sheet.replaceSync (file.raw)
+  }
+
+  function handle_css_error (e) { }
+
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
+      const data = await Promise.all (paths.map (fetch_path_raw_data))
+      const valid_data = data.filter (filter_valid_data)
+      if (valid_data.length > 0) {
+        if (type === 'theme') inject (valid_data)
+        if (type === 'entries') on_entries (valid_data)
+      }
+    }
+
+    function fetch_path_raw_data (path) {
+      return drive.get (path).then (extract_raw_if_exists)
+    }
+
+    function extract_raw_if_exists (file) {
+      return file ? file.raw : null
+    }
+
+    function filter_valid_data (d) {
+      return d !== null
+    }
+  }
+
+  function inject (data) {
+    if (Array.isArray (data)) {
+      sheet.replaceSync (data.join ('\n'))
+    }
+  }
+
+  function on_entries (data) {
+    if (!data || !data[0]) {
+      db = graphdb ({})
+      notify_db_initialized ({})
+      return
+    }
+    let parsed_data = {}
+    try {
+      if (typeof data[0] === 'string') {
+        parsed_data = JSON.parse (data[0])
+      } else {
+        parsed_data = data[0]
+      }
+    } catch (e) { }
+    db = graphdb (parsed_data)
+    notify_db_initialized (parsed_data)
+  }
+
+  function notify_db_initialized (entries) {
+    if (send_to_graph_explorer) {
+      const head = [by, 'graph_explorer', mid++]
+      send_to_graph_explorer ({ head, type: 'db_initialized', data: { entries } })
+    }
+  }
+
+  function graph_explorer_protocol (send) {
+    send_to_graph_explorer = send
+    return on_graph_explorer_message
+
+    function on_graph_explorer_message (msg) {
+      const { type } = msg
+      if (type === 'selection_changed') {
+        if (send_up) send_up (msg)
+      }
+      if (type.startsWith ('db_')) handle_db_request (msg, send)
+    }
+  }
+
+  async function handle_db_request (request_msg, send) {
+    const { head: request_head, type: operation, data: params } = request_msg
+    let result
+    if (!db) { send_response (request_head, null); return }
+
+    if (operation === 'db_get') result = db.get (params.path)
+    else if (operation === 'db_has') result = db.has (params.path)
+    else if (operation === 'db_is_empty') result = db.is_empty ()
+    else if (operation === 'db_root') result = db.root ()
+    else if (operation === 'db_keys') result = db.keys ()
+    else if (operation === 'db_raw') result = db.raw ()
+    else result = null
+
+    send_response (request_head, result)
+
+    function send_response (request_head, result) {
+      const response_head = [by, 'graph_explorer', mid++]
+      send ({ head: response_head, refs: { cause: request_head }, type: 'db_response', data: { result } })
+    }
+  }
+}
+
+function fallback_module () {
+  return {
+    drive: {
+      'theme/': {},
+      'entries/': {},
+      'runtime/': {},
+      'mode/': {},
+      'flags/': {},
+      'keybinds/': {},
+      'undo/': {}
+    },
+    _: {
+      'graph-explorer': {
+        $: '',
+        mapping: {
+          theme: 'theme',
+          entries: 'entries',
+          runtime: 'runtime',
+          mode: 'mode',
+          flags: 'flags',
+          keybinds: 'keybinds',
+          undo: 'undo'
+        }
+      },
+      './graphdb': { $: '' }
+    },
+    api: fallback_instance
+  }
+
+  function fallback_instance () {
+    return {
+      _: {
+        'graph-explorer': {
+          0: override_theme,
+          mapping: {
+            theme: 'theme',
+            entries: 'entries',
+            runtime: 'runtime',
+            mode: 'mode',
+            flags: 'flags',
+            keybinds: 'keybinds',
+            undo: 'undo'
+          }
+        },
+        './graphdb': { $: '' }
+      },
+      drive: {
+        'entries/': { 'entries.json': { $ref: 'entries.json' } },
+        'theme/': {
+          'layout.css': { $ref: 'layout.css' },
+          'style.css': { $ref: 'style.css' }
+        },
+        'runtime/': {
+          'node_height.json': { raw: '32' },
+          'vertical_scroll_value.json': { raw: '0' },
+          'horizontal_scroll_value.json': { raw: '0' },
+          'selected_instance_paths.json': { raw: '[]' },
+          'confirmed_selected.json': { raw: '[]' },
+          'instance_states.json': { raw: '{}' },
+          'search_entry_states.json': { raw: '{}' },
+          'last_clicked_node.json': { raw: 'null' },
+          'view_order_tracking.json': { raw: '{}' }
+        },
+        'flags/': {
+          'hubs.json': { raw: '"default"' },
+          'selection.json': { raw: 'true' },
+          'recursive_collapse.json': { raw: 'true' }
+        },
+        'keybinds/': { 'navigation.json': { raw: '{}' } },
+        'undo/': { 'stack.json': { raw: '[]' } },
+        'mode/': { 'current_mode.json': { raw: '"menubar"' } }
+      }
+    }
+  }
+
+  function override_theme () {
+    return {
+      mapping: {
+        theme: 'theme',
+        entries: 'entries',
+        runtime: 'runtime',
+        mode: 'mode',
+        flags: 'flags',
+        keybinds: 'keybinds',
+        undo: 'undo'
+      },
+      drive: {
+        'theme/': {
+          'style.css': { $ref: 'style.css' }
+        },
+        'runtime/': {
+          'node_height.json': { raw: '32' },
+          'vertical_scroll_value.json': { raw: '0' },
+          'horizontal_scroll_value.json': { raw: '0' },
+          'selected_instance_paths.json': { raw: '[]' },
+          'confirmed_selected.json': { raw: '[]' },
+          'instance_states.json': {
+            raw: JSON.stringify ({
+              '|/': { expanded_subs: true },
+              '|/my-stories': { expanded_subs: true },
+              '|/feeds': { expanded_subs: true },
+              '|/feeds/hackers-digest': { expanded_subs: true },
+              '|/feeds/peer-review': { expanded_subs: true },
+              '|/feeds/peer-review/security-chronicles': { expanded_subs: true },
+              '|/lists': { expanded_subs: true },
+              '|/discover': { expanded_subs: true }
+            })
+          },
+          'search_entry_states.json': { raw: '{}' },
+          'last_clicked_node.json': { raw: 'null' },
+          'view_order_tracking.json': { raw: '{}' }
+        },
+        'mode/': {
+          'current_mode.json': { raw: '"menubar"' },
+          'previous_mode.json': { raw: '"menubar"' },
+          'search_query.json': { raw: '""' },
+          'multi_select_enabled.json': { raw: 'false' },
+          'select_between_enabled.json': { raw: 'false' }
+        },
+        'flags/': {
+          'hubs.json': { raw: '"default"' },
+          'selection.json': { raw: 'true' },
+          'recursive_collapse.json': { raw: 'true' }
+        },
+        'keybinds/': {
+          'navigation.json': {
+            raw: JSON.stringify ({
+              ArrowUp: 'navigate_up_current_node',
+              ArrowDown: 'navigate_down_current_node',
+              'Control+ArrowDown': 'toggle_subs_for_current_node',
+              'Control+ArrowUp': 'toggle_hubs_for_current_node',
+              'Alt+s': 'multiselect_current_node',
+              'Alt+b': 'select_between_current_node',
+              'Control+m': 'toggle_search_mode',
+              'Alt+j': 'jump_to_next_duplicate'
+            })
+          }
+        },
+        'undo/': { 'stack.json': { raw: '[]' } }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/web/node_modules/graph_explorer_impl/wrapper.js")
+},{"./graphdb":3,"STATE":1,"graph-explorer":2}],6:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require ('STATE')
+const statedb = STATE (__filename)
+const { get } = statedb (fallback_module)
+const graph_explorer_impl = require ('graph_explorer_impl')
+
+module.exports = menu_sidebar
+
+async function menu_sidebar (opts, protocol) {
+  const { sid } = opts
+  const { id, sdb } = await get (sid)
+  const { drive } = sdb
+
+  let send_up = null
+  let send_down = null
+
+  const el = document.createElement ('div')
+  const shadow = el.attachShadow ({ mode: 'closed' })
+
+  const sheet = new CSSStyleSheet ()
+  shadow.adoptedStyleSheets = [sheet]
+
+  shadow.innerHTML = `
+    <aside class="sidebar_shell">
+      <header class="app_header">
+        <h2>P2P News</h2>
+      </header>
+      <div class="explorer_slot"></div>
+    </aside>
+  `
+
+  const explorer_slot = shadow.querySelector ('.explorer_slot')
+
+  if (protocol) {
+    send_up = protocol (handle_parent_message)
+  }
+
+  const subs = await sdb.watch (handle_state_batch)
+  const explorer_instance = subs.find (match_explorer)
+  if (explorer_instance) {
+    const explorer_el = await graph_explorer_impl (explorer_instance, setup_explorer_protocol)
+    explorer_slot.appendChild (explorer_el)
+  }
+
+  drive.get ('theme/menu_sidebar.css').then (apply_theme).catch (handle_error)
+
+  return el
+
+  function match_explorer (s) {
+    return s.module === 'graph_explorer_impl'
+  }
+
+  function handle_parent_message (msg) {
+    if (send_down) send_down (msg)
+  }
+
+  function setup_explorer_protocol (send) {
+    send_down = send
+    return handle_explorer_message
+  }
+
+  function handle_explorer_message (msg) {
+    if (send_up) send_up (msg)
+  }
+
+  async function handle_state_batch (batch) {
+    for (const { type, paths } of batch) {
+      if (type === 'theme') {
+        const file = await drive.get (paths[0]).catch (handle_error)
+        apply_theme (file)
+      }
+    }
+  }
+
+  function apply_theme (file) {
+    if (file && file.raw) sheet.replaceSync (file.raw)
+  }
+
+  function handle_error (err) { }
+}
+
+function fallback_module () {
+  return {
+    drive: {
+      'theme/': {
+        'menu_sidebar.css': {
+          $ref: 'menu_sidebar.css'
+        }
+      },
+      'entries/': {},
+      'runtime/': {},
+      'mode/': {},
+      'flags/': {},
+      'keybinds/': {},
+      'undo/': {}
+    },
+    _: {
+      graph_explorer_impl: {
+        $: '',
+        mapping: {
+          theme: 'theme',
+          entries: 'entries',
+          runtime: 'runtime',
+          mode: 'mode',
+          flags: 'flags',
+          keybinds: 'keybinds',
+          undo: 'undo'
+        }
+      }
+    },
+    api: fallback_instance
+  }
+
+  function fallback_instance () {
+    return {
+      _: {
+        graph_explorer_impl: {
+          $: '',
+          mapping: {
+            theme: 'theme',
+            entries: 'entries',
+            runtime: 'runtime',
+            mode: 'mode',
+            flags: 'flags',
+            keybinds: 'keybinds',
+            undo: 'undo'
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/web/node_modules/menu_sidebar/index.js")
+},{"STATE":1,"graph_explorer_impl":4}],7:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+
+const { get } = statedb(fallback_module)
+const menu_sidebar = require('menu_sidebar')
+const newsfeed_view = require('newsfeed_view')
+const content_parser = newsfeed_view.parser
+const write_page = require('write_page')
+const news_list = require('newsfeed_card_list')
+
+module.exports = news_app
+
+async function news_app (opts, protocol) {
+  const { id, sdb } = await get(opts.sid)
+  const { drive } = sdb
+
+  const by = id
+  let mid = 0
+  let send_to_sidebar = null
+
+  const db_requests = new Map()
   const card_map = new WeakMap()
   let active_folder = ''
   let list_items_data = []
@@ -3372,12 +3866,15 @@ async function wrapper (opts, protocol) {
 
   const subs = await sdb.watch(onbatch)
 
-  if (subs && subs.length > 0) {
-    if (typeof graph_explorer === 'function') {
-      explorer_el = await graph_explorer(subs[0], graph_explorer_protocol)
-      explorer_el.classList.add('explorer-panel')
-      shadow.insertBefore(explorer_el, shadow.firstChild)
-    }
+  const sidebar_instance = subs.find(match_sidebar)
+  if (sidebar_instance) {
+    const sidebar_el = await menu_sidebar(sidebar_instance, sidebar_protocol)
+    sidebar_el.classList.add('explorer-panel')
+    shadow.insertBefore(sidebar_el, shadow.firstChild)
+  }
+
+  function match_sidebar (s) {
+    return s.module === 'menu_sidebar'
   }
 
   render_main_view()
@@ -3387,6 +3884,35 @@ async function wrapper (opts, protocol) {
   shadow.addEventListener('input', handle_shadow_input)
 
   return el
+
+  function sidebar_protocol (send) {
+    send_to_sidebar = send
+    return handle_sidebar_message
+
+    function handle_sidebar_message (msg) {
+      const { type, data, refs } = msg
+      if (type === 'selection_changed') {
+        if (data.selected && data.selected.length > 0) render_folder_content(data.selected[0])
+      } else if (type === 'db_response') {
+        const req_id = refs?.cause?.[2]
+        if (db_requests.has(req_id)) {
+          db_requests.get(req_id)(data.result)
+          db_requests.delete(req_id)
+        }
+      }
+    }
+  }
+
+  async function db_get (path) {
+    if (!send_to_sidebar) return null
+    return new Promise(execute_db_request)
+
+    function execute_db_request (resolve) {
+      const current_id = mid++
+      db_requests.set(current_id, resolve)
+      send_to_sidebar({ head: [id, 'sidebar', current_id], type: 'db_get', data: { path } })
+    }
+  }
 
   function apply_layout_css (file) {
     if (file && file.raw) layout_sheet.replaceSync(file.raw)
@@ -3398,10 +3924,9 @@ async function wrapper (opts, protocol) {
     const node_el = e.target.closest('.node')
     if (node_el && !e.target.closest('.name') && !e.target.closest('.prefix')) {
       const instance_path = node_el.dataset.instance_path
-      if (instance_path && send_to_graph_explorer) {
-        const head = [id, 'graph_explorer', mid++]
-        send_to_graph_explorer({
-          head,
+      if (instance_path && send_to_sidebar) {
+        send_to_sidebar({
+          head: [id, 'sidebar', mid++],
           type: 'toggle_node',
           data: { instance_path, toggle_type: 'subs' }
         })
@@ -3419,8 +3944,7 @@ async function wrapper (opts, protocol) {
             return
           }
         }
-        const head = [id, 'graph_explorer', mid++]
-        send_to_graph_explorer({ head, type: 'select_node', data: { instance_path: path } })
+        send_to_sidebar({ head: [id, 'sidebar', mid++], type: 'select_node', data: { instance_path: path } })
       }
     }
 
@@ -3468,10 +3992,10 @@ async function wrapper (opts, protocol) {
 
   function render_main_view () {
     render_html(`
-  <div class="empty-container">
-    <h2 class="empty-title">Select an item to read</h2>
-    <p class="empty-hint">← Choose a story or feed from the sidebar</p>
-  </div>
+      <div class="empty-container">
+        <h2 class="empty-title">Select an item to read</h2>
+        <p class="empty-hint">← Choose a story or feed from the sidebar</p>
+      </div>
     `)
   }
 
@@ -3503,11 +4027,10 @@ async function wrapper (opts, protocol) {
 
   async function onbatch (batch) {
     for (const { type, paths } of batch) {
-      const data = await Promise.all(paths.map(fetch_path_raw_data))
-      const valid_data = data.filter(filter_valid_data)
-      if (valid_data.length > 0) {
-        if (type === 'theme') inject(valid_data)
-        if (type === 'entries') on_entries(valid_data)
+      if (type === 'theme') {
+        const files = await Promise.all(paths.map(fetch_path_raw_data))
+        const valid_data = files.filter(filter_valid_data)
+        if (valid_data.length > 0) inject(valid_data)
       }
     }
 
@@ -3530,45 +4053,6 @@ async function wrapper (opts, protocol) {
     }
   }
 
-  function on_entries (data) {
-    if (!data || !data[0]) {
-      db = graphdb({})
-      notify_db_initialized({})
-      return
-    }
-    let parsed_data = {}
-    try {
-      if (typeof data[0] === 'string') {
-        parsed_data = content_parser(data[0]) || {}
-      } else {
-        parsed_data = data[0]
-      }
-    } catch (e) { }
-    db = graphdb(parsed_data)
-    notify_db_initialized(parsed_data)
-  }
-
-  function notify_db_initialized (entries) {
-    if (send_to_graph_explorer) {
-      const head = [by, 'graph_explorer', mid++]
-      send_to_graph_explorer({ head, type: 'db_initialized', data: { entries } })
-    }
-  }
-
-  function graph_explorer_protocol (send) {
-    send_to_graph_explorer = send
-    return on_graph_explorer_message
-
-    function on_graph_explorer_message (msg) {
-      const { type, data } = msg
-      if (type === 'selection_changed') {
-        const { selected } = data
-        if (selected && selected.length > 0) render_folder_content(selected[0])
-      }
-      if (type.startsWith('db_')) handle_db_request(msg, send)
-    }
-  }
-
   async function render_folder_content (path) {
     let drive_path = path
     if (drive_path.startsWith('/')) drive_path = drive_path.slice(1)
@@ -3580,7 +4064,7 @@ async function wrapper (opts, protocol) {
     if (data && data.content) {
       render_article(data)
     } else {
-      const { folder_name, subs } = get_folder_details(path)
+      const { folder_name, subs } = await get_folder_details(path)
 
       if (subs.length > 0) {
         const handled = await process_folder_items({ path, subs, folder_name })
@@ -3600,7 +4084,7 @@ async function wrapper (opts, protocol) {
     }
   }
 
-  function get_folder_details (path) {
+  async function get_folder_details (path) {
     let folder_name = path.split('/').pop() || path
     let subs = []
     let db_path = path
@@ -3608,17 +4092,16 @@ async function wrapper (opts, protocol) {
       db_path = path.split('|').pop()
     }
 
-    if (db) {
-      const entry = db.get(db_path) || db.get(path)
-      if (entry) {
-        if (entry.name) folder_name = entry.name
-        if (entry.subs) subs = entry.subs
-      }
+    const entry = await db_get(db_path) || await db_get(path)
+    if (entry) {
+      if (entry.name) folder_name = entry.name
+      if (entry.subs) subs = entry.subs
     }
     return { folder_name, subs }
   }
 
-  async function process_folder_items ({ path, subs, folder_name }) {
+  async function process_folder_items (opts) {
+    const { path, subs, folder_name } = opts
     active_folder = folder_name
     const fetched_items = (await Promise.all(subs.map(fetch_sub_item))).filter(filter_valid_fetched_items)
 
@@ -3642,7 +4125,7 @@ async function wrapper (opts, protocol) {
       return { path: sub_path, data: item_data }
     }
 
-    if (path.includes('my-stories')) {
+    if (path.includes('my_stories')) {
       const local_stories = get_local_stories()
       local_stories.forEach(push_local_story)
 
@@ -3654,7 +4137,7 @@ async function wrapper (opts, protocol) {
     list_items_data = fetched_items
 
     if (fetched_items.length > 0) {
-      const is_my_stories = path.includes('my-stories') || path.includes('My Stories')
+      const is_my_stories = path.includes('my_stories') || path.includes('My Stories')
 
       if (!shadow.adoptedStyleSheets.includes(news_card_sheet)) {
         drive.get('theme/news-card.css').then(apply_news_card_css).catch(ignore_css_error)
@@ -3687,12 +4170,12 @@ async function wrapper (opts, protocol) {
   function render_empty_folder (folder_name, path) {
     active_folder = folder_name
     render_html(`
-  <div class="empty-folder-container">
-    <div class="empty-folder-icon">📂</div>
-    <h2 class="empty-folder-title">${folder_name}</h2>
-    <p>Select a file inside to view content.</p>
-    ${(path.includes('my-stories') || folder_name.includes('My Stories')) ? '<div class="news-fab">+</div>' : ''}
-  </div>
+      <div class="empty-folder-container">
+        <div class="empty-folder-icon">📂</div>
+        <h2 class="empty-folder-title">${folder_name}</h2>
+        <p>Select a file inside to view content.</p>
+        ${(path.includes('my-stories') || folder_name.includes('My Stories')) ? '<div class="news-fab">+</div>' : ''}
+      </div>
     `)
   }
 
@@ -3708,37 +4191,40 @@ async function wrapper (opts, protocol) {
     stories.unshift(story)
     localStorage.setItem('p2p_stories', JSON.stringify(stories))
   }
-
-  async function handle_db_request (request_msg, send) {
-    const { head: request_head, type: operation, data: params } = request_msg
-    let result
-    if (!db) { send_response(request_head, null); return }
-
-    if (operation === 'db_get') result = db.get(params.path)
-    else if (operation === 'db_has') result = db.has(params.path)
-    else if (operation === 'db_is_empty') result = db.is_empty()
-    else if (operation === 'db_root') result = db.root()
-    else if (operation === 'db_keys') result = db.keys()
-    else if (operation === 'db_raw') result = db.raw()
-    else result = null
-
-    send_response(request_head, result)
-
-    function send_response (request_head, result) {
-      const response_head = [by, 'graph_explorer', mid++]
-      send({ head: response_head, refs: { cause: request_head }, type: 'db_response', data: { result } })
-    }
-  }
 }
 
 function fallback_module () {
   return {
-    drive: {},
+    drive: {
+      'entries/': {},
+      'theme/': {},
+      'runtime/': {},
+      'mode/': {},
+      'flags/': {},
+      'keybinds/': {},
+      'undo/': {},
+      'my_stories/': {},
+      'feeds/': {},
+      'lists/': {},
+      'discover/': {}
+    },
     _: {
-      'graph-explorer': { $: '' },
-      './graphdb': { $: '' },
-      newsfeed_view: { $: '' },
-      news_cards: { $: '' },
+      menu_sidebar: {
+        $: '',
+        mapping: {
+          theme: 'theme',
+          entries: 'entries',
+          runtime: 'runtime',
+          mode: 'mode',
+          flags: 'flags',
+          keybinds: 'keybinds',
+          undo: 'undo'
+        }
+      },
+      newsfeed_view: {
+        $: '',
+        mapping: { theme: 'theme' }
+      },
       write_page: { $: '' },
       newsfeed_card_list: { $: '' }
     },
@@ -3748,10 +4234,10 @@ function fallback_module () {
   function fallback_instance () {
     return {
       _: {
-        'graph-explorer': {
-          0: override_theme,
+        menu_sidebar: {
+          0: override_sidebar_theme,
           mapping: {
-            style: 'theme',
+            theme: 'theme',
             entries: 'entries',
             runtime: 'runtime',
             mode: 'mode',
@@ -3760,24 +4246,18 @@ function fallback_module () {
             undo: 'undo'
           }
         },
-        './graphdb': { $: '' },
-        newsfeed_view: { $: '' },
-        news_cards: { $: '' },
+        newsfeed_view: {
+          $: override_newsfeed_theme,
+          mapping: { theme: 'theme' }
+        },
         write_page: { $: '' },
         newsfeed_card_list: { $: '' }
       },
       drive: {
-        'entries/': { 'entries.json': { $ref: 'entries.json' } },
+        'entries/': { 'entries.json': { $ref: '../graph_explorer_impl/entries.json' } },
         'theme/': {
-          'layout.css': {
-            $ref: 'layout.css'
-          },
-          'news-card.css': {
-            $ref: '../news_cards/news-card.css'
-          },
-          'style.css': {
-            $ref: 'style.css'
-          }
+          'layout.css': { $ref: '../graph_explorer_impl/layout.css' },
+          'news-card.css': { $ref: '../news_cards/news-card.css' }
         },
         'runtime/': {
           'node_height.json': { raw: '32' },
@@ -3790,6 +4270,7 @@ function fallback_module () {
           'last_clicked_node.json': { raw: 'null' },
           'view_order_tracking.json': { raw: '{}' }
         },
+        'mode/': { 'current_mode.json': { raw: '"menubar"' } },
         'flags/': {
           'hubs.json': { raw: '"default"' },
           'selection.json': { raw: 'true' },
@@ -3797,118 +4278,64 @@ function fallback_module () {
         },
         'keybinds/': { 'navigation.json': { raw: '{}' } },
         'undo/': { 'stack.json': { raw: '[]' } },
-        'my-stories/': {
-          'story-1': { $ref: 'data/story-1.md' },
-          'story-2': { $ref: 'data/story-2.md' },
-          'story-3': { $ref: 'data/story-3.md' },
-          'story-4': { $ref: 'data/story-4.md' }
+        'my_stories/': {
+          story_1: { $ref: 'data/story_1.md' },
+          story_2: { $ref: 'data/story_2.md' },
+          story_3: { $ref: 'data/story_3.md' },
+          story_4: { $ref: 'data/story_4.md' }
         },
-        'feeds/': {},
-        'feeds/hackers-digest/': {
-          'code-coffee': { $ref: 'data/code-coffee.md' },
-          'system-design': { $ref: 'data/system-design.md' }
-        },
-        'feeds/off-the-grid/': {
-          'mesh-network': { $ref: 'data/mesh-network.md' },
+        'feeds/': {
+          code_coffee: { $ref: 'data/code_coffee.md' },
+          system_design: { $ref: 'data/system_design.md' },
+          mesh_network: { $ref: 'data/mesh_network.md' },
           fediverse: { $ref: 'data/fediverse.md' },
-          'self-hosting': { $ref: 'data/self-hosting.md' }
-        },
-        'feeds/peer-review/': {
-          'network-notes': { $ref: 'data/network-notes.md' }
-        },
-        'feeds/peer-review/security-chronicles/': {
-          'privacy-matters': { $ref: 'data/privacy-matters.md' },
-          'zero-trust': { $ref: 'data/zero-trust.md' }
+          self_hosting: { $ref: 'data/self_hosting.md' },
+          network_notes: { $ref: 'data/network_notes.md' },
+          privacy_matters: { $ref: 'data/privacy_matters.md' },
+          zero_trust: { $ref: 'data/zero_trust.md' }
         },
         'lists/': {
-          'best-of-tech': { $ref: 'data/best-of-tech.md' },
-          'morning-read': { $ref: 'data/morning-read.md' }
+          best_of_tech: { $ref: 'data/best_of_tech.md' },
+          morning_read: { $ref: 'data/morning_read.md' }
         },
-        'discover/': {},
-        'discover/random-peer-99/': {},
-        'discover/satoshi-fan/': {},
-        'discover/rust-evangelist/': {}
+        'discover/': {
+          random_peer_99: { raw: '{}' },
+          satoshi_fan: { raw: '{}' },
+          rust_evangelist: { raw: '{}' }
+        }
       }
     }
   }
 
-  function override_theme () {
+  function override_sidebar_theme () {
     return {
-      _: {
-        mapping: {
-          style: 'theme',
-          runtime: 'runtime',
-          mode: 'mode',
-          flags: 'flags',
-          keybinds: 'keybinds',
-          undo: 'undo',
-          entries: 'entries'
-        }
+      mapping: {
+        theme: 'theme',
+        entries: 'entries',
+        runtime: 'runtime',
+        mode: 'mode',
+        flags: 'flags',
+        keybinds: 'keybinds',
+        undo: 'undo'
       },
       drive: {
-        'style/': {
-          'style.css': {
-            $ref: 'style.css'
-          }
-        },
-        'runtime/': {
-          'node_height.json': { raw: '32' },
-          'vertical_scroll_value.json': { raw: '0' },
-          'horizontal_scroll_value.json': { raw: '0' },
-          'selected_instance_paths.json': { raw: '[]' },
-          'confirmed_selected.json': { raw: '[]' },
-          'instance_states.json': {
-            raw: JSON.stringify({
-              '|/': { expanded_subs: true },
-              '|/my-stories': { expanded_subs: true },
-              '|/feeds': { expanded_subs: true },
-              '|/feeds/hackers-digest': { expanded_subs: true },
-              '|/feeds/peer-review': { expanded_subs: true },
-              '|/feeds/peer-review/security-chronicles': { expanded_subs: true },
-              '|/lists': { expanded_subs: true },
-              '|/discover': { expanded_subs: true }
-            })
-          },
-          'search_entry_states.json': { raw: '{}' },
-          'last_clicked_node.json': { raw: 'null' },
-          'view_order_tracking.json': { raw: '{}' }
-        },
-        'mode/': {
-          'current_mode.json': { raw: '"menubar"' },
-          'previous_mode.json': { raw: '"menubar"' },
-          'search_query.json': { raw: '""' },
-          'multi_select_enabled.json': { raw: 'false' },
-          'select_between_enabled.json': { raw: 'false' }
-        },
-        'flags/': {
-          'hubs.json': { raw: '"default"' },
-          'selection.json': { raw: 'true' },
-          'recursive_collapse.json': { raw: 'true' }
-        },
-        'keybinds/': {
-          'navigation.json': {
-            raw: JSON.stringify({
-              ArrowUp: 'navigate_up_current_node',
-              ArrowDown: 'navigate_down_current_node',
-              'Control+ArrowDown': 'toggle_subs_for_current_node',
-              'Control+ArrowUp': 'toggle_hubs_for_current_node',
-              'Alt+s': 'multiselect_current_node',
-              'Alt+b': 'select_between_current_node',
-              'Control+m': 'toggle_search_mode',
-              'Alt+j': 'jump_to_next_duplicate'
-            })
-          }
-        },
-        'undo/': {
-          'stack.json': { raw: '[]' }
+        'theme/': {
+          'menu_sidebar.css': { $ref: '../menu_sidebar/menu_sidebar.css' }
         }
       }
+    }
+  }
+
+  function override_newsfeed_theme () {
+    return {
+      mapping: { theme: 'theme' },
+      drive: { 'theme/': { 'style.css': { $ref: 'layout.css' } } }
     }
   }
 }
 
-}).call(this)}).call(this,"/web/node_modules/news/wrapper.js")
-},{"./graphdb":3,"STATE":1,"graph-explorer":2,"news_cards":6,"newsfeed_card_list":7,"newsfeed_view":9,"write_page":10}],6:[function(require,module,exports){
+}).call(this)}).call(this,"/web/node_modules/news_app/index.js")
+},{"STATE":1,"menu_sidebar":6,"newsfeed_card_list":9,"newsfeed_view":11,"write_page":12}],8:[function(require,module,exports){
 module.exports = news_cards
 
 async function news_cards (opts, protocol) {
@@ -3967,7 +4394,7 @@ async function news_cards (opts, protocol) {
 function fallback () {
 }
 
-},{}],7:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 const news_cards = require('news_cards')
 
 module.exports = news_list
@@ -4012,7 +4439,7 @@ async function news_list (opts, protocol) {
 function fallback () {
 }
 
-},{"news_cards":6}],8:[function(require,module,exports){
+},{"news_cards":8}],10:[function(require,module,exports){
 module.exports = function content_parser (raw) {
   if (!raw) return null
 
@@ -4063,7 +4490,7 @@ module.exports = function content_parser (raw) {
   return { content: raw }
 }
 
-},{}],9:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4114,7 +4541,7 @@ async function newsfeed_view (opts, protocol) {
 
     if (block.startsWith('# ')) return `<h1>${block.slice(2)}</h1>`
     if (block.startsWith('## ')) return `<h2>${block.slice(3)}</h2>`
-    if (block.startsWith('### ')) return `<h3>${block.slice(4)}</h3>`
+    if (block.startsWith('### ')) return `<h1>${block.slice(4)}</h1>`
 
     if (block.startsWith('- ')) {
       const items = block.split('\n').map(format_list_item).join('')
@@ -4140,7 +4567,9 @@ async function newsfeed_view (opts, protocol) {
 
 function fallback_module () {
   return {
-    drive: {},
+    drive: {
+      'theme/': {}
+    },
     _: {
       './content_parser': { $: '' }
     },
@@ -4151,14 +4580,14 @@ function fallback_module () {
     return {
       drive: {},
       _: {
-        './content_parser': { 0: '' }
+        './content_parser': { $: '' }
       }
     }
   }
 }
 
 }).call(this)}).call(this,"/web/node_modules/newsfeed_view/index.js")
-},{"./content_parser":8,"STATE":1}],10:[function(require,module,exports){
+},{"./content_parser":10,"STATE":1}],12:[function(require,module,exports){
 module.exports = write_page
 
 async function write_page (opts, protocol) {
@@ -4241,7 +4670,7 @@ async function write_page (opts, protocol) {
 function fallback () {
 }
 
-},{}],11:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 (function (__filename){(function (){
 localStorage.clear()
 const STATE = require('STATE')
@@ -4250,10 +4679,9 @@ statedb.admin()
 
 const { sdb } = statedb(fallback_module)
 
-console.log('p2p news app')
-const news = require('news')
+const news_app = require('news_app')
 
-const customVault = {
+const custom_vault = {
   init_blog: init_blog,
   get_peer_blogs: get_peer_blogs,
   get_my_posts: get_my_posts,
@@ -4261,61 +4689,46 @@ const customVault = {
   on_update: on_update
 }
 
-async function init_blog({ username }) {
-  console.log('[customVault] init_blog:', username)
+async function init_blog ({ username }) {
 }
 
-async function get_peer_blogs() {
-  console.log('[customVault] get_peer_blogs')
+async function get_peer_blogs () {
   return new Map()
 }
 
-async function get_my_posts() {
-  console.log('[customVault] get_my_posts')
+async function get_my_posts () {
   return []
 }
 
-async function get_profile(key) {
-  console.log('[customVault] get_profile:', key)
+async function get_profile (key) {
   return null
 }
 
-function on_update(callback) {
-  console.log('[customVault] on_update registered')
+function on_update (callback) {
 }
 
-async function init() {
-  console.log('[page.js] init started')
-
+async function init () {
   const start = await sdb.watch(handle_watch_batch)
 
-  async function handle_watch_batch(batch) {
-    console.log('[page.js] sdb watch batch:', batch)
+  async function handle_watch_batch (batch) {
   }
 
-  console.log('[page.js] Watch returned:', start)
-
-  if (!start || start.length === 0) {
-    console.error('[page.js] No active instances found for news')
-    return
-  }
+  if (!start || start.length === 0) return
 
   const news_instance = start[0]
   const { sid } = news_instance
-  console.log('[page.js] Retrieved sid for news:', sid)
 
-  const app = await news({ sid, vault: customVault })
+  const app = await news_app({ sid, vault: custom_vault })
   document.body.append(app)
 }
 
 init().catch(console.error)
 
-function fallback_module() {
+function fallback_module () {
   return {
     _: {
-      news: {
+      news_app: {
         $: '',
-        0: '',
         mapping: {
           entries: 'entries',
           theme: 'theme',
@@ -4324,7 +4737,7 @@ function fallback_module() {
           flags: 'flags',
           keybinds: 'keybinds',
           undo: 'undo',
-          'my-stories': 'my-stories',
+          my_stories: 'my_stories',
           feeds: 'feeds',
           lists: 'lists',
           discover: 'discover'
@@ -4332,19 +4745,58 @@ function fallback_module() {
       }
     },
     drive: {
-      'entries/': {},
-      'theme/': {},
-      'runtime/': {},
-      'mode/': {},
-      'flags/': {},
-      'keybinds/': {},
-      'undo/': {},
-      'my-stories/': {},
-      'feeds/': {},
-      'lists/': {},
-      'discover/': {}
+      'entries/': { 'entries.json': { $ref: 'node_modules/graph_explorer_impl/entries.json' } },
+      'theme/': {
+        'layout.css': { $ref: 'node_modules/graph_explorer_impl/layout.css' },
+        'news_card.css': { $ref: 'node_modules/news_cards/news-card.css' }
+      },
+      'runtime/': {
+        'node_height.json': { raw: '32' },
+        'vertical_scroll_value.json': { raw: '0' },
+        'horizontal_scroll_value.json': { raw: '0' },
+        'selected_instance_paths.json': { raw: '[]' },
+        'confirmed_selected.json': { raw: '[]' },
+        'instance_states.json': { raw: '{}' },
+        'search_entry_states.json': { raw: '{}' },
+        'last_clicked_node.json': { raw: 'null' },
+        'view_order_tracking.json': { raw: '{}' }
+      },
+      'mode/': { 'current_mode.json': { raw: '"menubar"' } },
+      'flags/': {
+        'hubs.json': { raw: '"default"' },
+        'selection.json': { raw: 'true' },
+        'recursive_collapse.json': { raw: 'true' }
+      },
+      'keybinds/': { 'navigation.json': { raw: '{}' } },
+      'undo/': { 'stack.json': { raw: '[]' } },
+      'my_stories/': {
+        story_1: { $ref: 'node_modules/news_app/data/story_1.md' },
+        story_2: { $ref: 'node_modules/news_app/data/story_2.md' },
+        story_3: { $ref: 'node_modules/news_app/data/story_3.md' },
+        story_4: { $ref: 'node_modules/news_app/data/story_4.md' }
+      },
+      'feeds/': {
+        code_coffee: { $ref: 'node_modules/news_app/data/code_coffee.md' },
+        system_design: { $ref: 'node_modules/news_app/data/system_design.md' },
+        mesh_network: { $ref: 'node_modules/news_app/data/mesh_network.md' },
+        fediverse: { $ref: 'node_modules/news_app/data/fediverse.md' },
+        self_hosting: { $ref: 'node_modules/news_app/data/self_hosting.md' },
+        network_notes: { $ref: 'node_modules/news_app/data/network_notes.md' },
+        privacy_matters: { $ref: 'node_modules/news_app/data/privacy_matters.md' },
+        zero_trust: { $ref: 'node_modules/news_app/data/zero_trust.md' }
+      },
+      'lists/': {
+        best_of_tech: { $ref: 'node_modules/news_app/data/best_of_tech.md' },
+        morning_read: { $ref: 'node_modules/news_app/data/morning_read.md' }
+      },
+      'discover/': {
+        random_peer_99: { raw: '{}' },
+        satoshi_fan: { raw: '{}' },
+        rust_evangelist: { raw: '{}' }
+      }
     }
   }
 }
+
 }).call(this)}).call(this,"/web/page.js")
-},{"STATE":1,"news":4}]},{},[11]);
+},{"STATE":1,"news_app":7}]},{},[13]);
