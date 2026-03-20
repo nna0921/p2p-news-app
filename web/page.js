@@ -1,12 +1,12 @@
-localStorage.clear()
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-statedb.admin()
+localStorage.clear ()
+const STATE = require ('STATE')
+const statedb = STATE (__filename)
+statedb.admin ()
 
-const { sdb } = statedb(fallback_module)
+const { sdb } = statedb (fallback_module)
 
-console.log('p2p news app')
-const news = require('news')
+console.log ('p2p news app')
+const news_app = require ('news_app')
 
 const customVault = {
   init_blog: init_blog,
@@ -16,59 +16,59 @@ const customVault = {
   on_update: on_update
 }
 
-async function init_blog({ username }) {
-  console.log('[customVault] init_blog:', username)
+async function init_blog ({ username }) {
+  console.log ('[customVault] init_blog:', username)
 }
 
-async function get_peer_blogs() {
-  console.log('[customVault] get_peer_blogs')
-  return new Map()
+async function get_peer_blogs () {
+  console.log ('[customVault] get_peer_blogs')
+  return new Map ()
 }
 
-async function get_my_posts() {
-  console.log('[customVault] get_my_posts')
+async function get_my_posts () {
+  console.log ('[customVault] get_my_posts')
   return []
 }
 
-async function get_profile(key) {
-  console.log('[customVault] get_profile:', key)
+async function get_profile (key) {
+  console.log ('[customVault] get_profile:', key)
   return null
 }
 
-function on_update(callback) {
-  console.log('[customVault] on_update registered')
+function on_update (callback) {
+  console.log ('[customVault] on_update registered')
 }
 
-async function init() {
-  console.log('[page.js] init started')
+async function init () {
+  console.log ('[page.js] init started')
 
-  const start = await sdb.watch(handle_watch_batch)
+  const start = await sdb.watch (handle_watch_batch)
 
-  async function handle_watch_batch(batch) {
-    console.log('[page.js] sdb watch batch:', batch)
+  async function handle_watch_batch (batch) {
+    console.log ('[page.js] sdb watch batch:', batch)
   }
 
-  console.log('[page.js] Watch returned:', start)
+  console.log ('[page.js] Watch returned:', start)
 
   if (!start || start.length === 0) {
-    console.error('[page.js] No active instances found for news')
+    console.error ('[page.js] No active instances found for news_app')
     return
   }
 
   const news_instance = start[0]
   const { sid } = news_instance
-  console.log('[page.js] Retrieved sid for news:', sid)
+  console.log ('[page.js] Retrieved sid for news_app:', sid)
 
-  const app = await news({ sid, vault: customVault })
-  document.body.append(app)
+  const app = await news_app ({ sid, vault: customVault })
+  document.body.append (app)
 }
 
-init().catch(console.error)
+init ().catch (console.error)
 
-function fallback_module() {
+function fallback_module () {
   return {
     _: {
-      news: {
+      news_app: {
         $: '',
         0: '',
         mapping: {

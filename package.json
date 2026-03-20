@@ -4,8 +4,6 @@
   "description": "A p2p-news-app worked via hypercore/hyperswarms stack",
   "standardx": {
     "ignore": [
-      "/node_modules/",
-      "!/lib/node_modules/**",
       "*-bundle.js",
       "shim.js",
       "bundle.js",
@@ -27,10 +25,19 @@
       "indent": [
         "error",
         2
+      ],
+      "space-before-function-paren": [
+        "error",
+        "always"
+      ],
+      "func-call-spacing": [
+        "error",
+        "always"
       ]
     },
     "ignorePatterns": [
-      "!lib/node_modules/"
+      "!lib/node_modules/",
+      "!web/node_modules/"
     ]
   },
   "bin": {
