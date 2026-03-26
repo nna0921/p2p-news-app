@@ -32,7 +32,7 @@
       ],
       "func-call-spacing": [
         "error",
-        "always"
+        "never"
       ]
     },
     "ignorePatterns": [
