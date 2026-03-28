@@ -3869,14 +3869,22 @@ const { get } = statedb(fallback_module)
 
 module.exports = news_cards
 
+const card_map = new Map()
+news_cards.card_map = card_map
+
 async function news_cards (opts, protocol) {
   const { sid, index } = opts
   const { sdb } = await get(sid)
   const { drive } = sdb
 
-  const card_file = await drive.get(`runtime/card-${index}.json`)
-  const card_data = JSON.parse(card_file ? card_file.raw : '{}')
-  const data = card_data.data || {}
+  const sid_key = sid.join('/')
+  let data = card_map.get(sid_key)
+
+  if (!data) {
+    const card_file = await drive.get(`runtime/card-${index}.json`)
+    const card_data = JSON.parse(card_file ? card_file.raw : '{}')
+    data = card_data.data || {}
+  }
 
   const date = data.date || ''
   const title = data.title || 'Untitled Story'
@@ -3954,6 +3962,7 @@ async function newsfeed_card_list (opts, protocol) {
   async function render_card (item, index) {
     const card_sid = [...id, 'news_cards', index]
 
+    news_cards.card_map.set(card_sid.join('/'), item.data)
     await sdb.drive.put(`runtime/card-${index}.json`, JSON.stringify({ data: item.data }))
 
     return news_cards({
